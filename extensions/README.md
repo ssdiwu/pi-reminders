@@ -19,9 +19,9 @@
    - extension 只做交互、解析、确认、输出
    - Apple Reminders 的底层仍由 `rem` 完成
 
-3. **不抢 skill 的职责**
-   - 现有 skill 继续是 prompt/实验层
-   - extension 是长期入口层
+3. **不和别的入口争抢职责**
+   - 这个仓库的长期对外入口就是 extension
+   - 其他脚本只负责测试或辅助
 
 ## 当前功能
 
