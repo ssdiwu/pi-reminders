@@ -1,0 +1,16 @@
+{
+  "name": "pi-reminders",
+  "version": "0.1.0",
+  "description": "Pi extension + skill for Apple Reminders via rem CLI with dry-run confirmation.",
+  "keywords": ["pi-package", "pi", "reminders", "apple-reminders", "extension", "skill"],
+  "license": "MIT",
+  "author": "diwu",
+  "pi": {
+    "extensions": ["./extensions/index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": "*",
+    "typebox": "*"
+  }
+}
