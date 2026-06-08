@@ -126,6 +126,13 @@ def ensure_reminder_added(list_name: str, title: str) -> str:
     return str(items[0]["id"])
 
 
+def ensure_multiple_reminders_added(list_name: str, titles: list[str]) -> list[str]:
+    ids: list[str] = []
+    for title in titles:
+        ids.append(ensure_reminder_added(list_name, title))
+    return ids
+
+
 def ensure_reminder_deleted(reminder_id: str) -> None:
     cp = subprocess.run(["rem", "show", reminder_id, "-o", "json"], text=True, capture_output=True)
     if cp.returncode == 0:
@@ -167,11 +174,41 @@ def run_cycle(index: int, list_name: str, due: str) -> dict[str, Any]:
             print(json.dumps({"session_stderr": stderr}, ensure_ascii=False))
 
 
+def run_batch_cycle(index: int, list_name: str, item_count: int) -> dict[str, Any]:
+    now = int(time.time())
+    titles = [f"PI_RPC_BATCH_{chr(65 + idx)}_{index}_{now}" for idx in range(item_count)]
+    due_values = ["2026-06-09 09:00", "2026-06-09 11:00", "2026-06-09 15:00"][:item_count]
+    segments = [f"{title} {due}" for title, due in zip(titles, due_values, strict=True)]
+    prompt = "/reminders add " + "; ".join(segments)
+    request_id = f"batch_add_{item_count}"
+    session = RpcSession.start()
+    try:
+        verify_command_registered(session)
+        session.send({"id": request_id, "type": "prompt", "message": prompt})
+        add_seen = wait_for_response(session, request_id, timeout=30)
+        reminder_ids = ensure_multiple_reminders_added(list_name, titles)
+
+        for idx, title in enumerate(titles):
+            delete_id = f"delete_{item_count}_{idx}"
+            session.send({"id": delete_id, "type": "prompt", "message": f"/reminders delete {title}"})
+            wait_for_response(session, delete_id, timeout=40)
+        for reminder_id in reminder_ids:
+            ensure_reminder_deleted(reminder_id)
+
+        return {"status": "ok", "titles": titles, "ids": reminder_ids, "events": {request_id: add_seen}}
+    finally:
+        stderr = session.close()
+        if stderr:
+            print(json.dumps({"session_stderr": stderr}, ensure_ascii=False))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Real pi RPC regression test for the /reminders extension command flow.")
     parser.add_argument("--runs", type=int, default=1, help="How many add→list→complete→delete cycles to run")
     parser.add_argument("--list", default=DEFAULT_LIST, help="Reminder list name")
     parser.add_argument("--due", default=DEFAULT_DUE, help="Absolute due date passed to /reminders add")
+    parser.add_argument("--batch-runs", type=int, default=0, help="How many 2-item batch add cycles to run")
+    parser.add_argument("--triple-batch-runs", type=int, default=0, help="How many 3-item batch add cycles to run")
     return parser.parse_args()
 
 
@@ -179,6 +216,12 @@ def main() -> int:
     args = parse_args()
     for index in range(1, args.runs + 1):
         result = run_cycle(index=index, list_name=args.list, due=args.due)
+        print(json.dumps(result, ensure_ascii=False))
+    for index in range(1, args.batch_runs + 1):
+        result = run_batch_cycle(index=index, list_name=args.list, item_count=2)
+        print(json.dumps(result, ensure_ascii=False))
+    for index in range(1, args.triple_batch_runs + 1):
+        result = run_batch_cycle(index=index, list_name=args.list, item_count=3)
         print(json.dumps(result, ensure_ascii=False))
     return 0
 

@@ -39,10 +39,11 @@
 
 ### Phase 1：当前形态
 
-- `/reminders list [query]`
-- `/reminders add <title> [absolute_due]`
-- `/reminders complete <id_or_query>`
-- `/reminders delete <id_or_query>`
+- `/reminders` 默认 list
+- `/reminders_list [query]`
+- `/reminders_add <title> [absolute_due]`
+- `/reminders_complete <id_or_query>`
+- `/reminders_delete <id_or_query>`
 - `reminders` tool
 
 ### Phase 2：补齐能力

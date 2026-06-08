@@ -25,11 +25,14 @@
 
 ## 当前功能
 
-- `/reminders list [query]`
-- `/reminders add <title> [absolute_due]`
-- `/reminders complete <id_or_query>`
-- `/reminders delete <id_or_query>`
-- `reminders` tool（同样支持 add/list/complete/delete）
+- `/reminders` 默认 list
+- `/reminders_list [query]`
+- `/reminders_add <title> [absolute_due]`
+- `/reminders_add <title> [absolute_due]; <title> [absolute_due]`（批量快速创建）
+- `/reminders_add --items '[{"title":"...","due":"YYYY-MM-DD"}]'`（结构化批量创建）
+- `/reminders_complete <id_or_query>`
+- `/reminders_delete <id_or_query>`
+- `reminders` tool（同样支持 add/list/complete/delete，add 支持 `items[]`）
 
 ## 测试策略
 
@@ -60,6 +63,7 @@ pi --mode rpc --no-session
 - slash command 注册是否成功
 - RPC 下的 UI 请求是否正常
 - `add / list / complete / delete` 是否真实闭环
+- 单条 add 与批量 add 是否都能稳定落地
 - `rem` 侧的最终状态是否正确
 
 这比伪造 runtime 更接近你真实日常使用的路径。
