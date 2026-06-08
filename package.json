@@ -7,7 +7,7 @@
   "author": "diwu",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ssdiwu/pi-reminders.git"
+    "url": "git+https://github.com/ssdiwu/pi-reminders.git"
   },
   "pi": {
     "extensions": ["./extensions/index.ts"]
