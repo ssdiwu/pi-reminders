@@ -1,8 +1,14 @@
 {
   "name": "pi-reminders",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Pi extension for Apple Reminders via rem CLI with dry-run confirmation.",
-  "keywords": ["pi-package", "pi", "reminders", "apple-reminders", "extension"],
+  "keywords": [
+    "pi-package",
+    "pi",
+    "reminders",
+    "apple-reminders",
+    "extension"
+  ],
   "license": "MIT",
   "author": "diwu",
   "repository": {
@@ -10,11 +16,17 @@
     "url": "git+https://github.com/ssdiwu/pi-reminders.git"
   },
   "pi": {
-    "extensions": ["./extensions/index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "@earendil-works/pi-ai": "*",
     "typebox": "*"
-  }
+  },
+  "files": [
+    "index.ts",
+    "README.md"
+  ]
 }

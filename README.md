@@ -61,7 +61,7 @@ The test script automatically replies to extension UI prompts and verifies the r
 pi-reminders/
 ├── README.md
 ├── package.json
-├── extensions/
+├── index.ts
 ├── scripts/
 │   ├── README.md
 │   └── test-extension-rpc.py
