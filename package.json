@@ -25,6 +25,11 @@
     "@earendil-works/pi-ai": "*",
     "typebox": "*"
   },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.79.10",
+    "@earendil-works/pi-coding-agent": "^0.79.10",
+    "typebox": "^1.1.38"
+  },
   "files": [
     "index.ts",
     "README.md"
