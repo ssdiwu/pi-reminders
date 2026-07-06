@@ -1,17 +1,17 @@
 # pi-reminders — Agent 规范
 
 ## 项目一句话定位
-Pi 扩展：通过 `rem` CLI 操作 macOS Apple Reminders。extension-first，dry-run 确认，删除双确认。npm 包 `pi-reminders`。
+Pi 扩展：通过 osascript (AppleScript) 操作 macOS Apple Reminders。extension-first，按风险分级确认（add/complete 直接执行，删除单次确认）。npm 包 `pi-reminders`。
 
 ## 先读文档顺序
 1. 本文件
 2. `README.md`（功能、快捷命令、Quick start）
 
 ## 技术栈
-TypeScript Pi extension。依赖 `rem` CLI（`brew install BRO3886/tap/rem-cli`）。npm 发包。
+TypeScript Pi extension。依赖系统自带 osascript (AppleScript)，无需额外安装。npm 发包。
 
 ## 代码边界与安全边界
-- 每次写操作前 dry-run 确认；删除双确认
+- 按风险分级：add/complete 直接执行，仅删除单次确认
 - 不硬编码密钥
 
 ## 验证方式

@@ -1,14 +1,13 @@
 # pi-reminders
 
-Pi extension for Apple Reminders on macOS, powered by the `rem` CLI.
+Pi extension for Apple Reminders on macOS, powered by osascript (AppleScript).
 
 This repository is **extension-first**:
 
 - Always-on `/reminders` smart slash command
 - Short aliases: `/reminders_list`, `/reminders_add`, `/reminders_complete`, `/reminders_delete`
 - `reminders` tool for explicit model-driven calls
-- Dry-run confirmations before every write
-- Double confirmation for delete
+- Risk-tiered confirmation: add and complete execute directly, only delete asks once
 - Default list: `近期待办`
 
 ## Features
@@ -23,11 +22,7 @@ This repository is **extension-first**:
 
 ## Quick start
 
-1. Install `rem` and grant macOS permissions:
-   ```bash
-   brew install BRO3886/tap/rem-cli
-   rem lists
-   ```
+1. No install needed — osascript is built into macOS. On first use, grant automation permission when prompted (System Settings → Privacy & Security → Automation).
 2. Add this repository path to `~/.pi/agent/settings.json` under `packages`.
 3. Reload pi.
 4. Use:
@@ -53,24 +48,27 @@ python3 scripts/test-extension-rpc.py --triple-batch-runs 2
 python3 scripts/test-extension-rpc.py --runs 1 --batch-runs 1 --triple-batch-runs 1
 ```
 
-The test script automatically replies to extension UI prompts and verifies the result with `rem`.
+The test script automatically replies to extension UI prompts and verifies the result via osascript.
 
 ## Repository layout
 
 ```text
 pi-reminders/
 ├── README.md
+├── AGENTS.md
 ├── package.json
 ├── index.ts
 ├── scripts/
 │   ├── README.md
 │   └── test-extension-rpc.py
 └── doc/
+    ├── extension-roadmap.md
+    └── 决策档案/
 ```
 
 ## Design notes
 
-- The extension talks to `rem` directly.
+- The extension talks to Reminders.app directly via osascript (AppleScript).
 - No MCP backend is used.
 - The public repo is extension-only.
 - The goal is a small, always-loaded reminder workflow that stays out of your way.

@@ -22,7 +22,7 @@ python3 scripts/test-extension-rpc.py --runs 1 --batch-runs 1 --triple-batch-run
 
 - 启动真实 pi RPC runtime
 - 自动应答 `confirm` / `select` / `notify`
-- 用 `rem` 验证单条、双条批量、三条批量的增删改查结果
+- 用 osascript 验证单条、双条批量、三条批量的增删改查结果
 
 ## 设计原则
 

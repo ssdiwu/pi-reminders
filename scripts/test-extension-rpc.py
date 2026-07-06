@@ -55,12 +55,9 @@ class RpcSession:
         return self.proc.stderr.read().strip()
 
 
-def rem_json(args: list[str], check: bool = True) -> Any:
-    cp = subprocess.run(["rem", *args, "-o", "json"], text=True, capture_output=True)
-    if check and cp.returncode != 0:
-        details = cp.stderr.strip() or cp.stdout.strip()
-        raise RuntimeError(f"rem {' '.join(args)} failed: {details}")
-    return json.loads(cp.stdout) if cp.stdout.strip() else None
+def osa_run(script: str) -> str:
+    cp = subprocess.run(["osascript"], input=script, capture_output=True, text=True)
+    return cp.stdout.strip()
 
 
 def handle_ui_request(session: RpcSession, event: dict[str, Any], expected_title: str | None = None) -> None:
@@ -120,23 +117,53 @@ def verify_command_registered(session: RpcSession) -> None:
 
 
 def ensure_reminder_added(list_name: str, title: str) -> str:
-    items = rem_json(["list", "-l", list_name, "--search", title, "--incomplete"])
-    if not items:
+    script = f'''
+    tell application "Reminders"
+      repeat with r in reminders of list "{list_name}"
+        if name of r is "{title}" then return (id of r) as string
+      end repeat
+      return "NOT_FOUND"
+    end tell'''
+    out = osa_run(script)
+    if out == "NOT_FOUND":
         raise RuntimeError(f"add verification failed: reminder not found: {title}")
-    return str(items[0]["id"])
+    return out
 
 
 def ensure_multiple_reminders_added(list_name: str, titles: list[str]) -> list[str]:
-    ids: list[str] = []
-    for title in titles:
-        ids.append(ensure_reminder_added(list_name, title))
-    return ids
+    return [ensure_reminder_added(list_name, title) for title in titles]
 
 
 def ensure_reminder_deleted(reminder_id: str) -> None:
-    cp = subprocess.run(["rem", "show", reminder_id, "-o", "json"], text=True, capture_output=True)
-    if cp.returncode == 0:
+    full_id = reminder_id if reminder_id.startswith("x-apple-reminder://") else "x-apple-reminder://" + reminder_id
+    script = f'''
+    tell application "Reminders"
+      repeat with lst in lists
+        repeat with r in reminders of lst
+          if (id of r as string) is "{full_id}" then return "EXISTS"
+        end repeat
+      end repeat
+      return "GONE"
+    end tell'''
+    out = osa_run(script)
+    if "EXISTS" in out:
         raise RuntimeError(f"delete verification failed: reminder still exists: {reminder_id}")
+
+
+def ensure_reminder_completed(reminder_id: str) -> None:
+    full_id = reminder_id if reminder_id.startswith("x-apple-reminder://") else "x-apple-reminder://" + reminder_id
+    script = f'''
+    tell application "Reminders"
+      repeat with lst in lists
+        repeat with r in reminders of lst
+          if (id of r as string) is "{full_id}" then return (completed of r as string)
+        end repeat
+      end repeat
+      return "NOT_FOUND"
+    end tell'''
+    out = osa_run(script)
+    if out != "true":
+        raise RuntimeError(f"complete verification failed: reminder not completed: {reminder_id} (got {out})")
 
 
 def run_cycle(index: int, list_name: str, due: str) -> dict[str, Any]:
@@ -153,6 +180,7 @@ def run_cycle(index: int, list_name: str, due: str) -> dict[str, Any]:
 
         session.send({"id": "complete", "type": "prompt", "message": f"/reminders complete {title}"})
         complete_seen = wait_for_response(session, "complete", timeout=30)
+        ensure_reminder_completed(reminder_id)
 
         session.send({"id": "delete", "type": "prompt", "message": f"/reminders delete {title}"})
         delete_seen = wait_for_response(session, "delete", timeout=40)

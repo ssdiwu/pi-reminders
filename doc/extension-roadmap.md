@@ -23,17 +23,18 @@
 
 ## 设计原则
 
-1. **理解常驻，但写入不静默**
+1. **理解常驻，删除有护栏**
    - extension 始终加载
-   - 但 `add / complete / delete` 都必须确认
+   - `add / complete` 直接执行（廉价可逆，对话流已表达意图）
+   - 仅 `delete` 单次确认（不可逆操作的最低护栏）
 
 2. **先做命令型，再考虑自动化**
    - 当前优先 `/reminders ...`
    - 后面才考虑更强的自动工具调用
 
-3. **继续复用 `rem`**
-   - 不重写 EventKit
-   - 不复制 Apple Reminders 逻辑
+3. **通过 osascript 操作 Reminders.app**
+   - 不依赖第三方 CLI（rem 在 macOS 26/27 因无 Developer ID 签名被 TCC 静默拒绝，不可用）
+   - 走 AppleScript 通道，复用系统 Reminders.app 自带的权限身份
 
 ## 推荐演进顺序
 

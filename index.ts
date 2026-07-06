@@ -132,10 +132,6 @@ function renderAddDraft(draft: AddReminderDraft): string {
   return draft.due ? `${draft.title}｜${draft.due}` : draft.title;
 }
 
-function summarizeAddDrafts(drafts: AddReminderDraft[]): string {
-  return drafts.map((draft, index) => `${index + 1}. ${renderAddDraft(draft)}`).join("\n");
-}
-
 function isAbsoluteDue(due?: string): boolean {
   if (!due) return true;
   return /^\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2})?$/.test(due);
@@ -194,21 +190,91 @@ async function settleUi(): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 }
 
-async function runRem(args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("rem", args, { encoding: "utf-8", timeout: 15000 });
-  return stdout.trim();
+const US = "\x1f";
+const RS = "\x1e";
+
+function osaEscape(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ");
 }
 
-async function runRemJson<T>(args: string[]): Promise<T> {
-  const raw = await runRem([...args, "-o", "json"]);
-  return JSON.parse(raw) as T;
+function stripReminderId(rawId: string): string {
+  return rawId.replace(/^x-apple-reminder:\/\//, "").trim();
+}
+
+function osaDateFormat(due: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(due) ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm";
+}
+
+async function runOsa(script: string): Promise<string> {
+  const lines = script.split("\n").filter((l) => l.trim().length > 0);
+  const args: string[] = [];
+  for (const line of lines) args.push("-e", line);
+  const { stdout } = await execFileAsync("osascript", args, { encoding: "utf-8", timeout: 15000 });
+  return stdout.replace(/\n+$/, "");
+}
+
+interface OsaRecord {
+  id: string;
+  name: string;
+  due_date: string;
+  completed: boolean;
+  body: string;
+  list_name: string;
+}
+
+function parseOsaRecords(raw: string): OsaRecord[] {
+  const records: OsaRecord[] = [];
+  for (const chunk of raw.split(RS)) {
+    if (!chunk) continue;
+    const fields = chunk.split(US);
+    while (fields.length < 6) fields.push("");
+    const [id, name, dueDate, completed, body, listName] = fields;
+    records.push({
+      id: stripReminderId(id),
+      name,
+      due_date: dueDate,
+      completed: completed === "true",
+      body,
+      list_name: listName,
+    });
+  }
+  return records;
+}
+
+function osaRecordToReminder(rec: OsaRecord): Reminder {
+  return {
+    id: rec.id,
+    name: rec.name,
+    body: rec.body || undefined,
+    list_name: rec.list_name,
+    due_date: rec.due_date || undefined,
+    completed: rec.completed,
+  };
 }
 
 async function addReminder(title: string, due?: string, list = DEFAULT_LIST): Promise<Reminder> {
-  const args = ["add", title, "--list", list];
-  if (due) args.push("--due", due);
-  const result = await runRemJson<Reminder | Reminder[]>(args);
-  return Array.isArray(result) ? result[0] : result;
+  const lines = [
+    `use framework "Foundation"`,
+    `tell application "Reminders"`,
+  ];
+  if (due) {
+    const fmt = osaDateFormat(due);
+    lines.push(`set df to current application's NSDateFormatter's alloc()'s init()`);
+    lines.push(`df's setDateFormat:"${fmt}"`);
+    lines.push(`set dueDate to (df's dateFromString:"${due}") as date`);
+  }
+  const props = `name:"${osaEscape(title)}"` + (due ? ", due date:dueDate" : "");
+  lines.push(`set newRem to make new reminder with properties {${props}} at end of reminders of list "${osaEscape(list)}"`);
+  lines.push(`return (id of newRem) as string`);
+  lines.push(`end tell`);
+  const rawId = await runOsa(lines.join("\n"));
+  return {
+    id: stripReminderId(rawId),
+    name: title,
+    list_name: list,
+    due_date: due,
+    completed: false,
+  };
 }
 
 async function addReminders(drafts: AddReminderDraft[], list = DEFAULT_LIST): Promise<{ created: Reminder[]; failures: { draft: AddReminderDraft; error: string }[] }> {
@@ -224,34 +290,123 @@ async function addReminders(drafts: AddReminderDraft[], list = DEFAULT_LIST): Pr
   return { created, failures };
 }
 
-async function listReminders(query = "", list = DEFAULT_LIST): Promise<Reminder[]> {
-  const args = ["list", "-l", list, "--incomplete"];
-  if (query) args.push("--search", query);
-  return runRemJson<Reminder[]>(args);
+async function listReminders(query = "", list = DEFAULT_LIST, includeCompleted = false): Promise<Reminder[]> {
+  const lines = [
+    `use framework "Foundation"`,
+    `tell application "Reminders"`,
+    `set us to character id 31`,
+    `set df to current application's NSDateFormatter's alloc()'s init()`,
+    `df's setDateFormat:"yyyy-MM-dd HH:mm"`,
+    `set out to ""`,
+    `set q to "${osaEscape(query)}"`,
+    `set lstName to "${osaEscape(list)}"`,
+    `set onlyIncomplete to ${!includeCompleted}`,
+    `repeat with r in reminders of list lstName`,
+    `  set isMatch to true`,
+    `  if q is not "" then set isMatch to (name of r contains q)`,
+    `  if isMatch and (not onlyIncomplete or not (completed of r)) then`,
+    `    set rId to (id of r as string)`,
+    `    set rName to name of r`,
+    `    set rDue to ""`,
+    `    try`,
+    `      set d to due date of r`,
+    `      if d is not missing value then set rDue to (df's stringFromDate:(d as date)) as string`,
+    `    end try`,
+    `    set rBody to ""`,
+    `    try`,
+    `      set theBody to body of r`,
+    `      if theBody is not missing value then set rBody to theBody`,
+    `    end try`,
+    `    set out to out & rId & us & rName & us & rDue & us & (completed of r as string) & us & rBody & us & lstName & character id 30`,
+    `  end if`,
+    `end repeat`,
+    `return out`,
+    `end tell`,
+  ];
+  const raw = await runOsa(lines.join("\n"));
+  return parseOsaRecords(raw).map(osaRecordToReminder);
 }
 
 async function showReminder(id: string): Promise<Reminder | null> {
-  try {
-    return await runRemJson<Reminder>(["show", id]);
-  } catch {
-    return null;
-  }
+  const fullId = id.startsWith("x-apple-reminder://") ? id : "x-apple-reminder://" + id;
+  const lines = [
+    `use framework "Foundation"`,
+    `tell application "Reminders"`,
+    `set us to character id 31`,
+    `set df to current application's NSDateFormatter's alloc()'s init()`,
+    `df's setDateFormat:"yyyy-MM-dd HH:mm"`,
+    `set targetId to "${osaEscape(fullId)}"`,
+    `repeat with lst in lists`,
+    `  set lstName to name of lst`,
+    `  repeat with r in reminders of lst`,
+    `    if (id of r as string) is targetId then`,
+    `      set rName to name of r`,
+    `      set rDue to ""`,
+    `      try`,
+    `        set d to due date of r`,
+    `        if d is not missing value then set rDue to (df's stringFromDate:(d as date)) as string`,
+    `      end try`,
+    `      set rBody to ""`,
+    `      try`,
+    `        set theBody to body of r`,
+    `        if theBody is not missing value then set rBody to theBody`,
+    `      end try`,
+    `      return (id of r as string) & us & rName & us & rDue & us & (completed of r as string) & us & rBody & us & lstName`,
+    `    end if`,
+    `  end repeat`,
+    `end repeat`,
+    `return "NOT_FOUND"`,
+    `end tell`,
+  ];
+  const raw = await runOsa(lines.join("\n"));
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "NOT_FOUND") return null;
+  const records = parseOsaRecords(trimmed);
+  return records[0] ? osaRecordToReminder(records[0]) : null;
 }
 
 async function resolveCandidates(ref: string, mode: "all" | "incomplete", list = DEFAULT_LIST): Promise<Reminder[]> {
   const byId = await showReminder(ref);
   if (byId) return [byId];
-  const args = ["list", "-l", list, "--search", ref];
-  if (mode === "incomplete") args.push("--incomplete");
-  return runRemJson<Reminder[]>(args);
+  return listReminders(ref, list, mode === "all");
 }
 
-async function completeReminder(id: string): Promise<string> {
-  return runRem(["complete", id]);
+async function completeReminder(id: string): Promise<void> {
+  const fullId = id.startsWith("x-apple-reminder://") ? id : "x-apple-reminder://" + id;
+  const script = [
+    `tell application "Reminders"`,
+    `set targetId to "${osaEscape(fullId)}"`,
+    `set done to false`,
+    `repeat with lst in lists`,
+    `  try`,
+    `    set completed of (first reminder of lst whose id is targetId) to true`,
+    `    set done to true`,
+    `    exit repeat`,
+    `  end try`,
+    `end repeat`,
+    `if not done then error "reminder not found: " & targetId`,
+    `end tell`,
+  ].join("\n");
+  await runOsa(script);
 }
 
-async function deleteReminder(id: string): Promise<string> {
-  return runRem(["delete", id, "--force"]);
+async function deleteReminder(id: string): Promise<void> {
+  const fullId = id.startsWith("x-apple-reminder://") ? id : "x-apple-reminder://" + id;
+  const script = [
+    `tell application "Reminders"`,
+    `set targetId to "${osaEscape(fullId)}"`,
+    `set done to false`,
+    `repeat with lst in lists`,
+    `  try`,
+    `    delete (first reminder of lst whose id is targetId)`,
+    `    set done to true`,
+    `    exit repeat`,
+    `  end try`,
+    `end repeat`,
+    `if not done then error "reminder not found: " & targetId`,
+    `end tell`,
+  ].join("\n");
+  await runOsa(script);
 }
 
 async function pickCandidate(
@@ -269,24 +424,6 @@ async function pickCandidate(
   return index >= 0 ? reminders[index] : null;
 }
 
-async function confirmAdd(
-  title: string,
-  due: string | undefined,
-  ctx: ExtensionContext | ExtensionCommandContext,
-): Promise<boolean> {
-  if (!ctx.hasUI) throw new Error("当前没有可用 UI，无法做 add 的确认");
-  const dueLine = due || "（无具体时间，只在 Reminders 列表里）";
-  return ctx.ui.confirm("创建 reminder？", `标题: ${title}\n日期: ${dueLine}\n列表: ${DEFAULT_LIST}`);
-}
-
-async function confirmAddMany(
-  drafts: AddReminderDraft[],
-  ctx: ExtensionContext | ExtensionCommandContext,
-): Promise<boolean> {
-  if (!ctx.hasUI) throw new Error("当前没有可用 UI，无法做批量 add 的确认");
-  return ctx.ui.confirm(`创建 ${drafts.length} 个 reminder？`, `${summarizeAddDrafts(drafts)}\n\n列表: ${DEFAULT_LIST}`);
-}
-
 function buildAddSummary(created: Reminder[], failures: { draft: AddReminderDraft; error: string }[]): string {
   const createdText = created.map((reminder) => `已创建：${reminder.name}`).join("\n");
   const failureText = failures.map((item) => `失败：${renderAddDraft(item.draft)}｜${item.error}`).join("\n");
@@ -300,12 +437,6 @@ async function confirmAction(
 ): Promise<boolean> {
   if (!ctx.hasUI) throw new Error(`当前没有可用 UI，无法做 ${label} 的确认`);
   return ctx.ui.confirm(`${label} reminder？`, summarizeReminder(reminder));
-}
-
-async function confirmDeleteTwice(reminder: Reminder, ctx: ExtensionContext | ExtensionCommandContext): Promise<boolean> {
-  const once = await confirmAction("删除", reminder, ctx);
-  if (!once) return false;
-  return ctx.ui.confirm("二次确认删除？", `再次确认删除：\n${summarizeReminder(reminder)}\n\n此操作不可撤销。`);
 }
 
 async function handleListCommand(rest: string, ctx: ExtensionCommandContext): Promise<void> {
@@ -340,13 +471,11 @@ async function handleAddCommand(rest: string, ctx: ExtensionCommandContext): Pro
   }
   if (drafts.length === 1) {
     const [draft] = drafts;
-    if (!(await confirmAdd(draft.title, draft.due, ctx))) return;
     const created = await addReminder(draft.title, draft.due);
     ctx.ui.notify(`已创建：${created.name}`, "info");
     await settleUi();
     return;
   }
-  if (!(await confirmAddMany(drafts, ctx))) return;
   const { created, failures } = await addReminders(drafts);
   const summary = buildAddSummary(created, failures);
   ctx.ui.notify(summary || "未创建任何 reminder", failures.length > 0 && created.length === 0 ? "error" : "info");
@@ -376,7 +505,6 @@ async function handleCompleteCommand(rest: string, ctx: ExtensionCommandContext)
     await settleUi();
     return;
   }
-  if (!(await confirmAction("完成", reminder, ctx))) return;
   await completeReminder(reminder.id);
   ctx.ui.notify(`已完成：${reminder.name}`, "info");
   await settleUi();
@@ -394,7 +522,7 @@ async function handleDeleteCommand(rest: string, ctx: ExtensionCommandContext): 
     await settleUi();
     return;
   }
-  if (!(await confirmDeleteTwice(reminder, ctx))) return;
+  if (!(await confirmAction("删除", reminder, ctx))) return;
   await deleteReminder(reminder.id);
   ctx.ui.notify(`已删除：${reminder.name}`, "info");
   await settleUi();
@@ -418,11 +546,9 @@ async function executeToolAction(
     }
     if (drafts.length === 1) {
       const [draft] = drafts;
-      if (!(await confirmAdd(draft.title, draft.due, ctx))) return { content: [{ type: "text", text: "Cancelled" }] };
       const created = await addReminder(draft.title, draft.due);
       return { content: [{ type: "text", text: `Created: ${created.name}` }], details: { id: created.id } };
     }
-    if (!(await confirmAddMany(drafts, ctx))) return { content: [{ type: "text", text: "Cancelled" }] };
     const { created, failures } = await addReminders(drafts);
     return {
       content: [{ type: "text", text: buildAddSummary(created, failures) || "No reminders created" }],
@@ -443,12 +569,11 @@ async function executeToolAction(
   if (!reminder) return { content: [{ type: "text", text: "No matching reminder found" }] };
 
   if (action === "complete") {
-    if (!(await confirmAction("完成", reminder, ctx))) return { content: [{ type: "text", text: "Cancelled" }] };
     await completeReminder(reminder.id);
     return { content: [{ type: "text", text: `Completed: ${reminder.name}` }], details: { id: reminder.id } };
   }
 
-  if (!(await confirmDeleteTwice(reminder, ctx))) return { content: [{ type: "text", text: "Cancelled" }] };
+  if (!(await confirmAction("删除", reminder, ctx))) return { content: [{ type: "text", text: "Cancelled" }] };
   await deleteReminder(reminder.id);
   return { content: [{ type: "text", text: `Deleted: ${reminder.name}` }], details: { id: reminder.id } };
 }
@@ -464,7 +589,7 @@ export default function remindersExtension(pi: ExtensionAPI) {
       "Use reminders only when the user explicitly asks to create, list, complete, or delete a reminder or todo.",
       "Before calling reminders with action add, translate any Chinese or English natural-language date into an absolute YYYY-MM-DD or YYYY-MM-DD HH:MM value.",
       "If the user asks to create multiple reminders in one message, prefer a single add call with items[] instead of multiple separate add calls.",
-      "Never create, complete, or delete reminders without explicit user intent and user confirmation.",
+      "Never create, complete, or delete reminders without explicit user intent. Only delete shows a confirmation prompt; add and complete execute directly.",
     ],
     parameters: RemindersParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
