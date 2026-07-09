@@ -166,6 +166,50 @@ def ensure_reminder_completed(reminder_id: str) -> None:
         raise RuntimeError(f"complete verification failed: reminder not completed: {reminder_id} (got {out})")
 
 
+def read_reminder_fields(reminder_id: str) -> dict[str, str]:
+    full_id = reminder_id if reminder_id.startswith("x-apple-reminder://") else "x-apple-reminder://" + reminder_id
+    script = f'''
+    use framework "Foundation"
+    tell application "Reminders"
+      set us to character id 31
+      set df to current application's NSDateFormatter's alloc()'s init()
+      df's setDateFormat:"yyyy-MM-dd HH:mm"
+      repeat with lst in lists
+        repeat with r in reminders of lst
+          if (id of r as string) is "{full_id}" then
+            set rName to name of r
+            set rDue to ""
+            try
+              set d to due date of r
+              if d is not missing value then set rDue to (df's stringFromDate:(d as date)) as string
+            end try
+            set rBody to ""
+            try
+              set theBody to body of r
+              if theBody is not missing value then set rBody to theBody
+            end try
+            return rName & us & rDue & us & rBody
+          end if
+        end repeat
+      end repeat
+      return "NOT_FOUND"
+    end tell'''
+    out = osa_run(script)
+    if out == "NOT_FOUND":
+        raise RuntimeError(f"reminder not found: {reminder_id}")
+    parts = out.split("\x1f")
+    while len(parts) < 3:
+        parts.append("")
+    return {"name": parts[0], "due": parts[1], "body": parts[2]}
+
+
+def ensure_reminder_field(reminder_id: str, field: str, expected: str) -> None:
+    fields = read_reminder_fields(reminder_id)
+    actual = fields[field]
+    if actual != expected:
+        raise RuntimeError(f"update {field} verification failed: expected '{expected}', got '{actual}'")
+
+
 def run_cycle(index: int, list_name: str, due: str) -> dict[str, Any]:
     title = f"PI_RPC_TEST_{index}_{int(time.time())}"
     session = RpcSession.start()
@@ -174,15 +218,31 @@ def run_cycle(index: int, list_name: str, due: str) -> dict[str, Any]:
         session.send({"id": "add", "type": "prompt", "message": f"/reminders add {title} {due}"})
         add_seen = wait_for_response(session, "add", timeout=30)
         reminder_id = ensure_reminder_added(list_name, title)
+        pure_id = reminder_id.replace("x-apple-reminder://", "")
 
-        session.send({"id": "list", "type": "prompt", "message": f"/reminders list {title}"})
-        list_seen = wait_for_response(session, "list", timeout=30, expected_title=title)
+        new_title = f"{title}_U"
+        session.send({"id": "upd_title", "type": "prompt", "message": f'/reminders update {pure_id} --title "{new_title}"'})
+        upd_title_seen = wait_for_response(session, "upd_title", timeout=30)
+        ensure_reminder_field(reminder_id, "name", new_title)
 
-        session.send({"id": "complete", "type": "prompt", "message": f"/reminders complete {title}"})
+        new_due = "2026-07-09 13:37"
+        session.send({"id": "upd_due", "type": "prompt", "message": f'/reminders update {pure_id} --due "{new_due}"'})
+        upd_due_seen = wait_for_response(session, "upd_due", timeout=30)
+        ensure_reminder_field(reminder_id, "due", new_due)
+
+        new_body = "更新备注 body"
+        session.send({"id": "upd_body", "type": "prompt", "message": f'/reminders update {pure_id} --body "{new_body}"'})
+        upd_body_seen = wait_for_response(session, "upd_body", timeout=30)
+        ensure_reminder_field(reminder_id, "body", new_body)
+
+        session.send({"id": "list", "type": "prompt", "message": f"/reminders list {new_title}"})
+        list_seen = wait_for_response(session, "list", timeout=30, expected_title=new_title)
+
+        session.send({"id": "complete", "type": "prompt", "message": f"/reminders complete {new_title}"})
         complete_seen = wait_for_response(session, "complete", timeout=30)
         ensure_reminder_completed(reminder_id)
 
-        session.send({"id": "delete", "type": "prompt", "message": f"/reminders delete {title}"})
+        session.send({"id": "delete", "type": "prompt", "message": f"/reminders delete {new_title}"})
         delete_seen = wait_for_response(session, "delete", timeout=40)
         ensure_reminder_deleted(reminder_id)
         return {
@@ -191,6 +251,9 @@ def run_cycle(index: int, list_name: str, due: str) -> dict[str, Any]:
             "id": reminder_id,
             "events": {
                 "add": add_seen,
+                "update_title": upd_title_seen,
+                "update_due": upd_due_seen,
+                "update_body": upd_body_seen,
                 "list": list_seen,
                 "complete": complete_seen,
                 "delete": delete_seen,

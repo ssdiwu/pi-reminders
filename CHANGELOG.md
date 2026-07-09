@@ -2,6 +2,16 @@
 
 本文件记录 pi-reminders 对用户可感知的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/)，遵循 [语义化版本](https://semver.org/)。
 
+## [0.3.0] - 2026-07-08
+
+### Added
+
+- **新增 `update` 能力**：修改 reminder 的 `title / due / body`（标题/日期/备注）三字段，接入 `/reminders update` 主命令 + `/reminders_update` 别名 + `reminders` tool 的 `update` action 三套入口。
+  - 命令形式：`/reminders update <id_or_query> --title / --due / --body`（至少指定一个字段）
+  - 风险归 `add / complete` 同档：直接执行，不弹确认框（reminders 廉价可逆；仅 `delete` 保留单确认）
+  - 日期必须绝对格式 `YYYY-MM-DD` 或 `YYYY-MM-DD HH:MM`
+- `scripts/test-extension-rpc.py` 回归流程扩展为 `add → update(title/due/body) → list → complete → delete`
+
 ## [0.2.0] - 2026-07-06
 
 ### Breaking

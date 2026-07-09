@@ -6,7 +6,7 @@
 
 | 文件 | 作用 |
 |---|---|
-| `test-extension-rpc.py` | 用真实 `pi --mode rpc --no-session` 驱动 extension，回归测试单条 `/reminders add → list → complete → delete`，以及批量 `/reminders add ...; ...` |
+| `test-extension-rpc.py` | 用真实 `pi --mode rpc --no-session` 驱动 extension，回归测试单条 `/reminders add → update(title/due/body) → list → complete → delete`，以及批量 `/reminders add ...; ...` |
 
 ## 调试方式
 

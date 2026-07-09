@@ -8,7 +8,7 @@
 - [x] 真实 `pi --mode rpc` 回归测试跑通
 - [x] 公开仓库已完成
 - [x] 旧入口形态已从公开仓库移除
-- [ ] `update`
+- [x] `update`
 - [ ] `list-mgmt`
 - [ ] 更友好的安装/发布文档
 - [ ] package/marketplace 发布准备

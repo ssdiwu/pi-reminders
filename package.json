@@ -1,6 +1,6 @@
 {
   "name": "pi-reminders",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Pi extension for Apple Reminders via osascript (AppleScript).",
   "keywords": [
     "pi-package",

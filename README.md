@@ -5,7 +5,7 @@ Pi extension for Apple Reminders on macOS, powered by osascript (AppleScript).
 This repository is **extension-first**:
 
 - Always-on `/reminders` smart slash command
-- Short aliases: `/reminders_list`, `/reminders_add`, `/reminders_complete`, `/reminders_delete`
+- Short aliases: `/reminders_list`, `/reminders_add`, `/reminders_complete`, `/reminders_delete`, `/reminders_update`
 - `reminders` tool for explicit model-driven calls
 - Risk-tiered confirmation: add and complete execute directly, only delete asks once
 - Default list: `近期待办`
@@ -18,7 +18,8 @@ This repository is **extension-first**:
 - `add --items '[{"title":"...","due":"YYYY-MM-DD"}]'` for structured batch creation
 - `complete <id_or_query>`
 - `delete <id_or_query>`
-- Real RPC regression test for the full add → list → complete → delete flow
+- `update <id_or_query> [--title] [--due] [--body]` to edit title, due date, or body
+- Real RPC regression test for the full add → update → list → complete → delete flow
 
 ## Quick start
 
@@ -34,6 +35,7 @@ This repository is **extension-first**:
    /reminders_add --items '[{"title":"Task A","due":"2026-06-17"},{"title":"Task B"}]'
    /reminders_complete "Buy milk"
    /reminders_delete "Buy milk"
+   /reminders_update "Buy milk" --due "2026-06-18 09:00" --body "2% milk"
    ```
 
 ## Real runtime regression test
