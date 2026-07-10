@@ -56,3 +56,9 @@ pi-reminders 原本通过 `rem` CLI（BRO3886/rem）操作 Apple Reminders，走
 - 序列化：用 `\x1f`（unit separator）/ `\x1e`（record separator）自定义文本协议（JSON 的 ObjC 桥接 `NSArray arrayWithArray:` 对含 record 的 list 失败，不可行）
 - due date：用 `NSDateFormatter` 解析 ISO 字符串，绕开中文系统 locale
 - complete/delete：用 `whose id is` + `first reminder` 子句定位，避开「循环内 delete」的 -1728 引用悬空错误
+
+## 补充（2026-07-10）
+
+本 ADR 初版把 `osascript` 无参从 stdin（标准输入）读取脚本记为“不兼容”。本轮以 `listReminders()` 生成的同一 AppleScript 实测：stdin 与逐行 `-e` 均可返回相同的 25 条记录；两种方式的耗时会随当前 Reminders 数据波动，stdin 没有稳定优势（本轮首次为 14.91s / 14.42s，独立复测为 35.04s / 32.88s）。
+
+测量方法是对同一脚本文本分别执行 `subprocess.run(["osascript"], input=script)` 与把每个非空行展开为 `osascript -e <line>`，比较记录数和耗时。项目仍选择逐行 `-e`：它没有更差的实测表现，也与既有实现和故障诊断路径一致；不再把 stdin 视为绝对不可用。

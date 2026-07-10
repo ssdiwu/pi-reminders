@@ -1,31 +1,29 @@
 # scripts
 
-这个目录现在只保留**真实 runtime 回归测试**。
+这个目录现在只保留**真实 runtime（运行时）回归测试**。
 
 ## 文件
 
 | 文件 | 作用 |
 |---|---|
-| `test-extension-rpc.py` | 用真实 `pi --mode rpc --no-session` 驱动 extension，回归测试单条 `/reminders add → update(title/due/body) → list → complete → delete`，以及批量 `/reminders add ...; ...` |
+| `test-extension-rpc.py` | 用真实 `pi --mode rpc --no-session` 驱动 extension：空参 `/reminders` 的确定性 list，以及非空文本交回当前 Pi session 的 handoff（转交） |
 
 ## 调试方式
 
 ```bash
 python3 scripts/test-extension-rpc.py
-python3 scripts/test-extension-rpc.py --runs 2
-python3 scripts/test-extension-rpc.py --batch-runs 2
-python3 scripts/test-extension-rpc.py --triple-batch-runs 2
-python3 scripts/test-extension-rpc.py --runs 1 --batch-runs 1 --triple-batch-runs 1 --list "近期待办" --due "2026-06-08 11:30"
 ```
 
 脚本会自动：
 
-- 启动真实 pi RPC runtime
-- 自动应答 `confirm` / `select` / `notify`
-- 用 osascript 验证单条、双条批量、三条批量的增删改查结果
+- 启动真实 `pi --mode rpc --no-session` runtime，不绑定模型
+- 自动应答空参 list 的 `select`
+- 空参路径等待 `select` 与 RPC response，且断言不会启动 agent 或 tool
+- 非空路径等待 RPC response 与 `agent_start`，再以 `get_messages` 断言精确文本已交回当前 Pi session；LLM 如何理解和调用 action 不属于此脚本的兜底范围
 
 ## 设计原则
 
 1. 只保留 extension 的真实回归测试
 2. 测试必须走真实 runtime，不走假 mock runtime
-3. 不再保留旧的 shell 包装脚本
+3. slash command 的 empty / natural-language 两条路径都要真实覆盖
+4. 不再保留旧的 shell 包装脚本

@@ -2,6 +2,24 @@
 
 本文件记录 pi-reminders 对用户可感知的变更。格式参考 [Keep a Changelog](https://keepachangelog.com/)，遵循 [语义化版本](https://semver.org/)。
 
+## [Unreleased]
+
+## [0.4.0] - 2026-07-10
+
+### Changed
+
+- **重构 `/reminders` slash command（斜杠命令）交互**：
+  - 空参 `/reminders` 改为确定性列出 `近期待办` 当前未完成项，零 LLM 成本
+  - `/reminders <自然语言>` 改为把文本交回当前会话 LLM 理解，再由 LLM 调 `reminders` tool 的 `action`
+- 移除旧的人打字命令体系：`/reminders_list`、`/reminders_add`、`/reminders_complete`、`/reminders_delete`、`/reminders_update` 别名，以及 `/reminders add|list|complete|delete|update` 的手写动词解析
+- `scripts/test-extension-rpc.py` 迁移到新路径：空参等待真实 `select`，非空等待当前 Pi session 的 `agent_start`；不再把模型理解、批量/update 或模型服务波动变成 extension 回归职责
+
+### Fixed
+
+- command handler 在 agent 忙碌时不再直接抛 `send_user_message` 错误；非空自然语言路径会在 busy 状态下走 `followUp` 队列
+- `runOsa()` 报错时补带 `stderr`，便于真实 AppleScript 失败排查
+- 新增可复验的 TypeScript typecheck 入口：`tsconfig.json` + `npx tsc --noEmit`，tool result 同时满足官方 `details` 契约
+
 ## [0.3.0] - 2026-07-08
 
 ### Added

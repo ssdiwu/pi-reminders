@@ -14,7 +14,7 @@
 
 - 平台边界：只支持 macOS；依赖系统自带 `osascript`，不引入 MCP 或额外后台服务。
 - 产品边界：这是一个 **extension-first** 小扩展，不做完整任务管理系统。
-- 命令边界：保留 `/reminders` 主命令、快捷别名和 `reminders` tool；不要平白扩一套新命令体系。
+- 命令边界：只保留 `/reminders` 人类入口与 `reminders` tool；非空文本交由当前 Pi session 理解，不恢复别名或手写动词解析。
 - 默认清单：当前默认列表是 `近期待办`；改默认值前先同步 `README.md`。
 - 风险边界：`add` / `complete` 直接执行，只有 `delete` 做单次确认；不要把低风险动作也升级成重确认流程。
 - 数据边界：日期输入最终要落成绝对时间；不要把模糊自然语言原样透传给 Apple Reminders。
@@ -23,7 +23,7 @@
 ## 修改时特别注意
 
 - AppleScript 返回值和字段格式不稳定时，优先在现有解析上做最小修正，不要为了“更优雅”重写整条链路。
-- 批量添加能力已经通过 `;` 快捷格式和 `--items` 结构化格式覆盖；新增输入形态前先证明现有形态不够用。
+- 批量添加仅保留 `reminders` tool 的结构化 `items[]` 契约；人类 `/reminders` 不恢复 `;` 或其他快捷解析。
 - 这是公开 npm 包，改动 `index.ts` 的对外行为时，要同步检查 `README.md` 里的示例命令是否仍然成立。
 - `package.json` 当前只发布 `index.ts` 和 `README.md`；如果新增运行所必需文件，必须同步更新 `files`。
 
@@ -33,15 +33,13 @@
 
 ```bash
 python3 scripts/test-extension-rpc.py
-python3 scripts/test-extension-rpc.py --batch-runs 1 --triple-batch-runs 1
 ```
 
 至少覆盖：
 
-- 单条 `add → list → complete → delete`
-- 双条批量添加
-- 三条批量添加
-- 自动应答确认 / 选择提示后结果仍正确
+- 空参 `/reminders` 出现确定性 `select`，且不启动 agent/tool
+- 非空 `/reminders <文本>` 启动当前 Pi session 的 agent，证明文本已交回 LLM
+- 脚本不绑定模型、不创建测试提醒；LLM 对 action 的理解与执行不由 extension 回归兜底
 
 ## 文档分工
 
