@@ -58,7 +58,11 @@ pi-reminders/
 │   └── test-extension-rpc.py
 └── doc/
     ├── README.md
-    ├── extension-roadmap.md
+    ├── 00-产品与原则/
+    ├── 10-架构与运行/
+    ├── 30-路线图/
+    ├── 40-版本实施方案/
+    ├── 术语表.md
     └── 决策档案/
 ```
 
