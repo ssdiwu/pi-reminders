@@ -29,16 +29,21 @@
 
 ## 验证
 
-改动后优先跑真实 `RPC（远程过程调用）` 回归，不拿 mock 代替：
+改动后优先跑真实 `RPC（远程过程调用）` 回归与确定性单测，不拿 mock 代替：
 
 ```bash
+npx tsc --noEmit
 python3 scripts/test-extension-rpc.py
+node --experimental-strip-types scripts/test-list-query.ts
+node --experimental-strip-types scripts/test-batch-delete.ts
 ```
 
 至少覆盖：
 
 - 空参 `/reminders` 出现确定性 `select`，且不启动 agent/tool
 - 非空 `/reminders <文本>` 启动当前 Pi session 的 agent，证明文本已交回 LLM
+- `test-list-query.ts` 覆盖列表阅读结果语义与工具层非法拒绝
+- `test-batch-delete.ts` 覆盖批量删除解析、去重、摘要、确认取消与尽力删除
 - 脚本不绑定模型、不创建测试提醒；LLM 对 action 的理解与执行不由 extension 回归兜底
 
 ## 文档分工
