@@ -8,6 +8,7 @@
 |---|---|
 | `test-extension-rpc.py` | 用真实 `pi --mode rpc --no-session` 驱动 extension：空参 `/reminders` 的确定性 list，以及非空文本交回当前 Pi session 的 handoff（转交） |
 | `test-list-query.ts` | 列表阅读结果语义的确定性单测：到期窗口闭区间、无日期项排除/保留、到期日升序排序、limit 截取、工具层非法拒绝。不经 LLM、不写真实提醒事项 |
+| `test-batch-delete.ts` | 批量删除编排的确定性单测（注入 mock）：refs 收集、多目标解析、歧义选择、ID 去重、确认摘要、最终确认只一次、取消零删除、尽力删除失败后继续。不触达 osascript、不写真实提醒事项 |
 
 ## 运行
 
@@ -17,6 +18,9 @@ python3 scripts/test-extension-rpc.py
 
 # 列表阅读纯函数单测（秒级）
 node --experimental-strip-types scripts/test-list-query.ts
+
+# 批量删除单测（秒级，纯函数注入，不触达 osascript）
+node --experimental-strip-types scripts/test-batch-delete.ts
 ```
 
 脚本会自动：

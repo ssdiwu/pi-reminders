@@ -58,6 +58,11 @@ const RemindersParams = Type.Object({
   query: Type.Optional(
     Type.String({ description: "Search query for list, or ID/title for complete/delete/update" }),
   ),
+  queries: Type.Optional(
+    Type.Array(
+      Type.String({ description: "Delete only: multiple ID/title references resolved in one batch confirm" }),
+    ),
+  ),
   dueFrom: Type.Optional(
     Type.String({
       description: "List only: absolute due-date lower bound (inclusive) YYYY-MM-DD or YYYY-MM-DD HH:MM. Translate natural language before calling.",
@@ -107,12 +112,14 @@ function formatReminderLine(reminder: Reminder): string {
   return `${status} ${shortId} ${reminder.name}${due}`;
 }
 
+function formatReminderChoice(r: Reminder): string {
+  const shortId = r.id.split("-")[0];
+  const due = r.due_date ? ` | ${r.due_date}` : " | （无）";
+  return `${shortId} | ${r.name}${due}`;
+}
+
 function formatReminderChoices(reminders: Reminder[]): string[] {
-  return reminders.map((item) => {
-    const shortId = item.id.split("-")[0];
-    const due = item.due_date ? ` | ${item.due_date}` : " | （无）";
-    return `${shortId} | ${item.name}${due}`;
-  });
+  return reminders.map(formatReminderChoice);
 }
 
 function buildListText(reminders: Reminder[]): string {
@@ -489,13 +496,119 @@ function buildAddSummary(created: Reminder[], failures: { draft: AddReminderDraf
   return [createdText, failureText].filter(Boolean).join("\n");
 }
 
-async function confirmAction(
-  label: string,
-  reminder: Reminder,
+interface UnresolvedTarget {
+  ref: string;
+  reason: string;
+}
+
+export interface BatchResolveDeps {
+  resolve: (ref: string) => Promise<Reminder[]>;
+  pick: (candidates: Reminder[]) => Promise<Reminder | null>;
+}
+
+export async function resolveBatchTargets(
+  refs: string[],
+  deps: BatchResolveDeps,
+): Promise<{ resolved: Reminder[]; unresolved: UnresolvedTarget[] }> {
+  const resolved: Reminder[] = [];
+  const unresolved: UnresolvedTarget[] = [];
+  const seen = new Set<string>();
+  for (const ref of refs) {
+    const candidates = await deps.resolve(ref);
+    if (candidates.length === 0) {
+      unresolved.push({ ref, reason: "未找到匹配项" });
+      continue;
+    }
+    const target = candidates.length === 1 ? candidates[0] : await deps.pick(candidates);
+    if (!target) {
+      unresolved.push({ ref, reason: "未选定或取消选择" });
+      continue;
+    }
+    if (seen.has(target.id)) continue;
+    seen.add(target.id);
+    resolved.push(target);
+  }
+  return { resolved, unresolved };
+}
+
+export function buildBatchConfirmBody(resolved: Reminder[], unresolved: UnresolvedTarget[]): string {
+  const lines: string[] = [`将删除 ${resolved.length} 条：`, ...resolved.map((r) => `- ${formatReminderChoice(r)}`)];
+  if (unresolved.length) {
+    lines.push(`未能定位 ${unresolved.length} 条：`, ...unresolved.map((u) => `- ${u.ref}（${u.reason}）`));
+  }
+  return lines.join("\n");
+}
+
+async function confirmBatchDelete(
+  resolved: Reminder[],
+  unresolved: UnresolvedTarget[],
   ctx: ExtensionContext | ExtensionCommandContext,
 ): Promise<boolean> {
-  if (!ctx.hasUI) throw new Error(`当前没有可用 UI，无法做 ${label} 的确认`);
-  return ctx.ui.confirm(`${label} reminder？`, summarizeReminder(reminder));
+  if (!ctx.hasUI) throw new Error("当前没有可用 UI，无法做批量删除的确认");
+  return ctx.ui.confirm("确认删除以上 reminder？", buildBatchConfirmBody(resolved, unresolved));
+}
+
+export async function executeBatchDelete(
+  resolved: Reminder[],
+  deleteFn: (id: string) => Promise<void>,
+): Promise<{ deleted: Reminder[]; failed: { reminder: Reminder; error: string }[] }> {
+  const deleted: Reminder[] = [];
+  const failed: { reminder: Reminder; error: string }[] = [];
+  for (const r of resolved) {
+    try {
+      await deleteFn(r.id);
+      deleted.push(r);
+    } catch (error) {
+      failed.push({ reminder: r, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { deleted, failed };
+}
+
+export function collectDeleteRefs(params: { query?: string; queries?: string[] }): string[] {
+  if (params.queries?.length) return params.queries.map((s) => s.trim()).filter(Boolean);
+  const q = params.query?.trim();
+  return q ? [q] : [];
+}
+
+export interface BatchDeleteDeps {
+  resolve: (ref: string) => Promise<Reminder[]>;
+  pick: (candidates: Reminder[]) => Promise<Reminder | null>;
+  confirm: (resolved: Reminder[], unresolved: UnresolvedTarget[]) => Promise<boolean>;
+  deleteFn: (id: string) => Promise<void>;
+}
+
+export async function runBatchDeleteFlow(
+  refs: string[],
+  deps: BatchDeleteDeps,
+): Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }> {
+  if (refs.length === 0) return { content: [{ type: "text", text: "Error: query required for delete" }], details: {} };
+  const { resolved, unresolved } = await resolveBatchTargets(refs, { resolve: deps.resolve, pick: deps.pick });
+  if (resolved.length === 0) {
+    return {
+      content: [{ type: "text", text: buildBatchDeleteResult([], unresolved, []) }],
+      details: { deleted: 0, unresolved: unresolved.length },
+    };
+  }
+  const ok = await deps.confirm(resolved, unresolved);
+  if (!ok) return { content: [{ type: "text", text: "Cancelled" }], details: { deleted: 0, unresolved: unresolved.length } };
+  const { deleted, failed } = await executeBatchDelete(resolved, deps.deleteFn);
+  return {
+    content: [{ type: "text", text: buildBatchDeleteResult(deleted, unresolved, failed) }],
+    details: { deleted: deleted.length, failed: failed.length, unresolved: unresolved.length },
+  };
+}
+
+export function buildBatchDeleteResult(
+  deleted: Reminder[],
+  unresolved: UnresolvedTarget[],
+  failed: { reminder: Reminder; error: string }[],
+): string {
+  const parts: string[] = [];
+  if (deleted.length) parts.push(deleted.map((r) => `已删除：${r.name}`).join("\n"));
+  if (failed.length) parts.push(failed.map((f) => `删除失败：${f.reminder.name}｜${f.error}`).join("\n"));
+  if (unresolved.length) parts.push(unresolved.map((u) => `未定位：${u.ref}｜${u.reason}`).join("\n"));
+  return parts.length ? parts.join("\n") : "没有可删除的 reminder。";
 }
 
 async function handleListCommand(rest: string, ctx: ExtensionCommandContext): Promise<void> {
@@ -528,7 +641,7 @@ async function resolveOneForWrite(
 
 async function executeToolAction(
   action: Action,
-  params: { title?: string; due?: string; body?: string; query?: string; items?: AddReminderDraft[]; dueFrom?: string; dueTo?: string; limit?: number },
+  params: { title?: string; due?: string; body?: string; query?: string; queries?: string[]; items?: AddReminderDraft[]; dueFrom?: string; dueTo?: string; limit?: number },
   ctx: ExtensionContext,
 ): Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }> {
   if (action === "list") {
@@ -584,33 +697,31 @@ async function executeToolAction(
     return { content: [{ type: "text", text }], details: { id: reminder.id } };
   }
 
+  if (action === "delete") {
+    return runBatchDeleteFlow(collectDeleteRefs(params), {
+      resolve: (ref) => resolveCandidates(ref, "all"),
+      pick: (candidates) => pickCandidate(candidates, "选择要删除的 reminder", ctx),
+      confirm: (resolved, unresolved) => confirmBatchDelete(resolved, unresolved, ctx),
+      deleteFn: (id) => deleteReminder(id),
+    });
+  }
+
   if (!params.query?.trim()) {
     return { content: [{ type: "text", text: `Error: query required for ${action}` }], details: {} };
   }
 
-  const reminder = await resolveOneForWrite(
-    params.query.trim(),
-    action === "complete" ? "incomplete" : "all",
-    `选择要${action === "complete" ? "完成" : "删除"}的 reminder`,
-    ctx,
-  );
+  const reminder = await resolveOneForWrite(params.query.trim(), "incomplete", "选择要完成的 reminder", ctx);
   if (!reminder) return { content: [{ type: "text", text: "No matching reminder found" }], details: {} };
 
-  if (action === "complete") {
-    await completeReminder(reminder.id);
-    return { content: [{ type: "text", text: `Completed: ${reminder.name}` }], details: { id: reminder.id } };
-  }
-
-  if (!(await confirmAction("删除", reminder, ctx))) return { content: [{ type: "text", text: "Cancelled" }], details: {} };
-  await deleteReminder(reminder.id);
-  return { content: [{ type: "text", text: `Deleted: ${reminder.name}` }], details: { id: reminder.id } };
+  await completeReminder(reminder.id);
+  return { content: [{ type: "text", text: `Completed: ${reminder.name}` }], details: { id: reminder.id } };
 }
 
 export default function remindersExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "reminders",
     label: "Reminders",
-    description: "Manage Apple Reminders in the user's default list. Actions: add, list (filter by due window, sort by due date, limit), complete, delete, update.",
+    description: "Manage Apple Reminders in the user's default list. Actions: add, list (filter by due window, sort by due date, limit), complete, delete (single or batch), update.",
     promptSnippet:
       "Create, list, complete, delete, or update Apple Reminders when the user explicitly asks. If the user asks for multiple reminders, batch them in one add call using items.",
     promptGuidelines: [
@@ -618,6 +729,7 @@ export default function remindersExtension(pi: ExtensionAPI) {
       "Before calling reminders with action add or update, translate any Chinese or English natural-language date into an absolute YYYY-MM-DD or YYYY-MM-DD HH:MM value.",
       "For action list, translate natural-language date ranges (today/this week) into absolute dueFrom/dueTo (inclusive). Use a positive integer limit only when the user asks for a bounded count; omit dueFrom/dueTo to keep items with no due date.",
       "If the user asks to create multiple reminders in one message, prefer a single add call with items[] instead of multiple separate add calls.",
+      "For action delete with multiple targets, pass them as queries[] for a single batch confirm; resolved targets are deleted after one confirmation, unresolved ones are reported.",
       "Never create, complete, delete, or update reminders without explicit user intent. Only delete shows a confirmation prompt; add, complete, and update execute directly.",
     ],
     parameters: RemindersParams,

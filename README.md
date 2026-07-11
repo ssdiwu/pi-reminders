@@ -16,6 +16,7 @@ This repository is **extension-first**:
 - `/reminders` → deterministic list, zero LLM cost
 - `/reminders <自然语言>` → let the current LLM understand add / update / complete / delete intent
 - `reminders(action=list)` supports `query` (title contains), inclusive `dueFrom` / `dueTo` (absolute `YYYY-MM-DD` or `YYYY-MM-DD HH:MM`), and a positive integer `limit`; results sort by due date ascending with undated items last
+- `reminders(action=delete)` accepts `queries[]` for a single batch confirm: resolved targets are deleted after one confirmation, unresolved ones are reported per item
 - `reminders` tool keeps the structured `action=add|list|complete|delete|update` contract unchanged
 - Bounded real RPC smoke: deterministic empty-command list plus nonempty handoff to the current Pi session
 
@@ -41,6 +42,7 @@ Run the extension through the actual `pi --mode rpc --no-session` protocol:
 npx tsc --noEmit
 python3 scripts/test-extension-rpc.py
 node --experimental-strip-types scripts/test-list-query.ts
+node --experimental-strip-types scripts/test-batch-delete.ts
 ```
 
 The smoke test auto-selects the empty-command list UI and verifies that nonempty `/reminders` input starts a Pi agent run and delivers its exact text to the current session. `test-list-query.ts` deterministically covers list-reading semantics (due window, sorting, limit, validation) without touching the LLM or real reminders. Natural-language interpretation and action selection remain the current LLM's responsibility; this extension does not bind a model or automate a model behavior matrix.
@@ -58,7 +60,8 @@ pi-reminders/
 ├── scripts/
 │   ├── README.md
 │   ├── test-extension-rpc.py
-│   └── test-list-query.ts
+│   ├── test-list-query.ts
+│   └── test-batch-delete.ts
 └── doc/
     ├── README.md
     ├── 00-产品与原则/
