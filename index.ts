@@ -58,6 +58,19 @@ const RemindersParams = Type.Object({
   query: Type.Optional(
     Type.String({ description: "Search query for list, or ID/title for complete/delete/update" }),
   ),
+  dueFrom: Type.Optional(
+    Type.String({
+      description: "List only: absolute due-date lower bound (inclusive) YYYY-MM-DD or YYYY-MM-DD HH:MM. Translate natural language before calling.",
+    }),
+  ),
+  dueTo: Type.Optional(
+    Type.String({
+      description: "List only: absolute due-date upper bound (inclusive) YYYY-MM-DD or YYYY-MM-DD HH:MM. Translate natural language before calling.",
+    }),
+  ),
+  limit: Type.Optional(
+    Type.Integer({ description: "List only: max items to return after sorting. Positive integer." }),
+  ),
 });
 
 function normalizeAddDrafts(params: { title?: string; due?: string; items?: AddReminderDraft[] }): AddReminderDraft[] {
@@ -220,6 +233,84 @@ async function addReminders(drafts: AddReminderDraft[], list = DEFAULT_LIST): Pr
   return { created, failures };
 }
 
+export function sortRemindersByDue(reminders: Reminder[]): Reminder[] {
+  const ts = (r: Reminder): number => {
+    if (!r.due_date) return Number.POSITIVE_INFINITY;
+    const t = Date.parse(r.due_date);
+    return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+  };
+  return [...reminders].sort((a, b) => {
+    const ta = ts(a);
+    const tb = ts(b);
+    if (ta !== tb) return ta - tb;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+export function normalizeDueBound(bound: string, edge: "start" | "end"): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(bound)) return edge === "start" ? `${bound} 00:00` : `${bound} 23:59`;
+  return bound;
+}
+
+const LIST_DUE_BOUND_RE = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2}))?$/;
+
+function isValidCalendar(s: string): boolean {
+  const m = s.match(LIST_DUE_BOUND_RE);
+  if (!m) return false;
+  const y = +m[1];
+  const mo = +m[2];
+  const d = +m[3];
+  const h = m[4] !== undefined ? +m[4] : 0;
+  const mi = m[5] !== undefined ? +m[5] : 0;
+  if (h > 23 || mi > 59) return false;
+  const dt = new Date(y, mo - 1, d, h, mi);
+  return (
+    dt.getFullYear() === y &&
+    dt.getMonth() === mo - 1 &&
+    dt.getDate() === d &&
+    dt.getHours() === h &&
+    dt.getMinutes() === mi
+  );
+}
+
+export function coerceListBounds(
+  dueFrom?: string,
+  dueTo?: string,
+): { dueFrom?: string; dueTo?: string; error?: string } {
+  const check = (v: string | undefined, label: string): string | undefined => {
+    if (v === undefined) return undefined;
+    const t = v.trim();
+    if (!t || !isValidCalendar(t)) return `${label} must be YYYY-MM-DD or YYYY-MM-DD HH:MM`;
+    return undefined;
+  };
+  const eFrom = check(dueFrom, "dueFrom");
+  if (eFrom) return { error: eFrom };
+  const eTo = check(dueTo, "dueTo");
+  if (eTo) return { error: eTo };
+  return { dueFrom: dueFrom?.trim(), dueTo: dueTo?.trim() };
+}
+
+export function coerceListLimit(limit?: number): { limit?: number; error?: string } {
+  if (limit === undefined) return {};
+  if (!Number.isInteger(limit) || limit <= 0) return { error: "limit must be a positive integer" };
+  return { limit };
+}
+
+export function applyListQuery(
+  reminders: Reminder[],
+  opts: { dueFrom?: string; dueTo?: string; limit?: number },
+): Reminder[] {
+  const { dueFrom, dueTo, limit } = opts;
+  let result = reminders;
+  if (dueFrom || dueTo) {
+    const lo = dueFrom ? normalizeDueBound(dueFrom, "start") : "";
+    const hi = dueTo ? normalizeDueBound(dueTo, "end") : "";
+    result = result.filter((r) => !!r.due_date && (!lo || r.due_date >= lo) && (!hi || r.due_date <= hi));
+  }
+  if (limit !== undefined && Number.isInteger(limit) && limit > 0) result = result.slice(0, limit);
+  return result;
+}
+
 async function listReminders(query = "", list = DEFAULT_LIST, includeCompleted = false): Promise<Reminder[]> {
   const lines = [
     `use framework "Foundation"`,
@@ -254,7 +345,7 @@ async function listReminders(query = "", list = DEFAULT_LIST, includeCompleted =
     `end tell`,
   ];
   const raw = await runOsa(lines.join("\n"));
-  return parseOsaRecords(raw).map(osaRecordToReminder);
+  return sortRemindersByDue(parseOsaRecords(raw).map(osaRecordToReminder));
 }
 
 async function showReminder(id: string): Promise<Reminder | null> {
@@ -437,11 +528,19 @@ async function resolveOneForWrite(
 
 async function executeToolAction(
   action: Action,
-  params: { title?: string; due?: string; body?: string; query?: string; items?: AddReminderDraft[] },
+  params: { title?: string; due?: string; body?: string; query?: string; items?: AddReminderDraft[]; dueFrom?: string; dueTo?: string; limit?: number },
   ctx: ExtensionContext,
 ): Promise<{ content: { type: "text"; text: string }[]; details: Record<string, unknown> }> {
   if (action === "list") {
-    const reminders = await listReminders(params.query || "");
+    const bounds = coerceListBounds(params.dueFrom, params.dueTo);
+    if (bounds.error) return { content: [{ type: "text", text: `Error: ${bounds.error}` }], details: {} };
+    const lim = coerceListLimit(params.limit);
+    if (lim.error) return { content: [{ type: "text", text: `Error: ${lim.error}` }], details: {} };
+    const reminders = applyListQuery(await listReminders(params.query || ""), {
+      dueFrom: bounds.dueFrom,
+      dueTo: bounds.dueTo,
+      limit: lim.limit,
+    });
     return { content: [{ type: "text", text: buildListText(reminders) }], details: { count: reminders.length } };
   }
 
@@ -511,12 +610,13 @@ export default function remindersExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "reminders",
     label: "Reminders",
-    description: "Manage Apple Reminders in the user's default list. Actions: add, list, complete, delete, update.",
+    description: "Manage Apple Reminders in the user's default list. Actions: add, list (filter by due window, sort by due date, limit), complete, delete, update.",
     promptSnippet:
       "Create, list, complete, delete, or update Apple Reminders when the user explicitly asks. If the user asks for multiple reminders, batch them in one add call using items.",
     promptGuidelines: [
       "Use reminders only when the user explicitly asks to create, list, complete, delete, or update a reminder or todo.",
       "Before calling reminders with action add or update, translate any Chinese or English natural-language date into an absolute YYYY-MM-DD or YYYY-MM-DD HH:MM value.",
+      "For action list, translate natural-language date ranges (today/this week) into absolute dueFrom/dueTo (inclusive). Use a positive integer limit only when the user asks for a bounded count; omit dueFrom/dueTo to keep items with no due date.",
       "If the user asks to create multiple reminders in one message, prefer a single add call with items[] instead of multiple separate add calls.",
       "Never create, complete, delete, or update reminders without explicit user intent. Only delete shows a confirmation prompt; add, complete, and update execute directly.",
     ],

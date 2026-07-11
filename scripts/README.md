@@ -1,17 +1,22 @@
 # scripts
 
-这个目录现在只保留**真实 runtime（运行时）回归测试**。
+这个目录放 extension 的回归与确定性测试：真实 runtime（运行时）冒烟测试覆盖命令路由，纯函数单测覆盖列表阅读的结果语义。
 
 ## 文件
 
 | 文件 | 作用 |
 |---|---|
 | `test-extension-rpc.py` | 用真实 `pi --mode rpc --no-session` 驱动 extension：空参 `/reminders` 的确定性 list，以及非空文本交回当前 Pi session 的 handoff（转交） |
+| `test-list-query.ts` | 列表阅读结果语义的确定性单测：到期窗口闭区间、无日期项排除/保留、到期日升序排序、limit 截取、工具层非法拒绝。不经 LLM、不写真实提醒事项 |
 
-## 调试方式
+## 运行
 
 ```bash
+# 真实命令路由回归（约 15-35 秒，驱动真实 pi runtime）
 python3 scripts/test-extension-rpc.py
+
+# 列表阅读纯函数单测（秒级）
+node --experimental-strip-types scripts/test-list-query.ts
 ```
 
 脚本会自动：
@@ -23,7 +28,7 @@ python3 scripts/test-extension-rpc.py
 
 ## 设计原则
 
-1. 只保留 extension 的真实回归测试
-2. 测试必须走真实 runtime，不走假 mock runtime
-3. slash command 的 empty / natural-language 两条路径都要真实覆盖
-4. 不再保留旧的 shell 包装脚本
+1. 命令路由必须走真实 runtime，不走假 mock runtime
+2. 列表结果语义是 extension 内部确定性逻辑（ADR 0002），用纯函数单测覆盖；slash command 的空参/非空两条路径用真实 runtime 覆盖
+3. 不把模型 action 选择、额度、跨 session 行为纳入本目录回归
+4. 不创建写入默认清单的测试夹具
