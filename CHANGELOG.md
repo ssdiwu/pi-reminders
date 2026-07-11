@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-10
+
+### Added
+
+- **`reminders(action=list)` 列表阅读**：新增 `dueFrom` / `dueTo`（绝对闭区间，`YYYY-MM-DD` 或 `YYYY-MM-DD HH:MM`）与正整数 `limit`；结果按到期日升序、无日期项置后。工具层用严格日历校验拒绝空串与 `02-30` / `24:00` 等无效值。
+- **`reminders(action=delete)` 批量删除一次确认**：新增 `queries[]` 多目标，逐目标解析并按 ID 去重，一次确认摘要同时展示将删除与未解析项；确认后顺序尽力删除，逐条返回成功与失败原因。单条 `query` 保持兼容。
+
 ## [0.4.0] - 2026-07-10
 
 ### Changed
