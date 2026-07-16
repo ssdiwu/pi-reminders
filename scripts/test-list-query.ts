@@ -2,7 +2,10 @@
 // Run: node --experimental-strip-types scripts/test-list-query.ts
 // These cover the pure list-reading behavior (ADR 0002): not the LLM action choice.
 
+import { initTheme, keyHint } from "@earendil-works/pi-coding-agent";
 import remindersExtension, { applyListQuery, sortRemindersByDue, normalizeDueBound, coerceListBounds, coerceListLimit } from "../index.ts";
+
+initTheme(undefined, false);
 
 interface R {
   id: string;
@@ -158,7 +161,7 @@ eq(
 
 // --- tool execute path: public execute rejects invalid input before any osascript call ---
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const captured: { tool?: { execute: (...args: any[]) => Promise<{ content: { text: string }[] }> } } = {};
+const captured: { tool?: { execute: (...args: any[]) => Promise<{ content: { text: string }[] }>; renderResult: (...args: any[]) => { render: (width: number) => string[] } } } = {};
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const fakePi: any = {
   registerTool: (def: any) => {
@@ -179,6 +182,13 @@ eq(await execListText({ dueFrom: "" }), "Error: dueFrom must be YYYY-MM-DD or YY
 eq(await execListText({ limit: 0 }), "Error: limit must be a positive integer", "execute: zero limit rejected");
 eq(await execListText({ limit: 2.5 }), "Error: limit must be a positive integer", "execute: fractional limit rejected");
 eq(await execListText({ limit: -1 }), "Error: limit must be a positive integer", "execute: negative limit rejected");
+
+// --- tool result projection ---
+const projectionTheme = { fg: (_color: string, text: string) => text };
+const projectionResult = { content: [{ type: "text", text: "Created: first\nDetails: second" }], details: { id: "private-id" } };
+eq(captured.tool!.renderResult(projectionResult, { expanded: false, isPartial: false }, projectionTheme).render(80), [`Created: first (${keyHint("app.tools.expand", "to expand")})`], "render: compact summary hides details");
+eq(captured.tool!.renderResult(projectionResult, { expanded: true, isPartial: false }, projectionTheme).render(80), ["Created: first\nDetails: second"], "render: expanded text only");
+eq(captured.tool!.renderResult(projectionResult, { expanded: false, isPartial: true }, projectionTheme).render(80), ["Working…"], "render: partial status");
 
 if (failures > 0) {
   console.error(`\n${failures} test(s) failed`);

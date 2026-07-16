@@ -1,5 +1,6 @@
 import { StringEnum } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { keyHint } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -639,6 +640,15 @@ async function resolveOneForWrite(
   return pickCandidate(candidates, title, ctx);
 }
 
+function renderToolResultText(result: { content?: Array<{ type?: string; text?: string }> }, expanded: boolean, theme: Theme) {
+  const text = result.content?.filter((item) => item.type === "text" && typeof item.text === "string").map((item) => item.text!).join("\n") ?? "";
+  const visible = expanded ? text : `${text.split("\n").find(Boolean) ?? "Completed"} (${keyHint("app.tools.expand", "to expand")})`;
+  return {
+    render: () => [theme.fg(expanded ? "toolOutput" : "success", visible)],
+    invalidate: () => {},
+  };
+}
+
 async function executeToolAction(
   action: Action,
   params: { title?: string; due?: string; body?: string; query?: string; queries?: string[]; items?: AddReminderDraft[]; dueFrom?: string; dueTo?: string; limit?: number },
@@ -735,6 +745,10 @@ export default function remindersExtension(pi: ExtensionAPI) {
     parameters: RemindersParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       return executeToolAction(params.action as Action, params, ctx);
+    },
+    renderResult(result, { expanded, isPartial }, theme) {
+      if (isPartial) return { render: () => [theme.fg("warning", "Working…")], invalidate: () => {} };
+      return renderToolResultText(result, expanded, theme);
     },
   });
 
