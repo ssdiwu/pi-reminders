@@ -36,6 +36,7 @@ npx tsc --noEmit
 python3 scripts/test-extension-rpc.py
 node --experimental-strip-types scripts/test-list-query.ts
 node --experimental-strip-types scripts/test-batch-delete.ts
+node --experimental-strip-types scripts/test-id-match.ts
 ```
 
 至少覆盖：
@@ -44,6 +45,7 @@ node --experimental-strip-types scripts/test-batch-delete.ts
 - 非空 `/reminders <文本>` 启动当前 Pi session 的 agent，证明文本已交回 LLM
 - `test-list-query.ts` 覆盖列表阅读结果语义与工具层非法拒绝
 - `test-batch-delete.ts` 覆盖批量删除解析、去重、摘要、确认取消与尽力删除
+- `test-id-match.ts` 覆盖展示给用户的 short id 能正确定位 reminder（真实 osascript 只读，需要至少 1 条真实未完成 reminder）
 - 脚本不绑定模型、不创建测试提醒；LLM 对 action 的理解与执行不由 extension 回归兜底
 
 ## 文档分工

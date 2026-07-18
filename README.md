@@ -43,9 +43,10 @@ npx tsc --noEmit
 python3 scripts/test-extension-rpc.py
 node --experimental-strip-types scripts/test-list-query.ts
 node --experimental-strip-types scripts/test-batch-delete.ts
+node --experimental-strip-types scripts/test-id-match.ts
 ```
 
-The smoke test auto-selects the empty-command list UI and verifies that nonempty `/reminders` input starts a Pi agent run and delivers its exact text to the current session. `test-list-query.ts` deterministically covers list-reading semantics (due window, sorting, limit, validation) and tool-result rendering never overflowing the terminal width, without touching the LLM or real reminders. Natural-language interpretation and action selection remain the current LLM's responsibility; this extension does not bind a model or automate a model behavior matrix.
+The smoke test auto-selects the empty-command list UI and verifies that nonempty `/reminders` input starts a Pi agent run and delivers its exact text to the current session. `test-list-query.ts` deterministically covers list-reading semantics (due window, sorting, limit, validation) and tool-result rendering never overflowing the terminal width, without touching the LLM or real reminders. `test-id-match.ts` is a read-only real-osascript integration test verifying that the short id shown to users resolves to the right reminder for update/complete/delete. Natural-language interpretation and action selection remain the current LLM's responsibility; this extension does not bind a model or automate a model behavior matrix.
 
 ## Repository layout
 
@@ -61,7 +62,8 @@ pi-reminders/
 │   ├── README.md
 │   ├── test-extension-rpc.py
 │   ├── test-list-query.ts
-│   └── test-batch-delete.ts
+│   ├── test-batch-delete.ts
+│   └── test-id-match.ts
 └── doc/
     ├── README.md
     ├── 00-产品与原则/

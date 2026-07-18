@@ -9,6 +9,7 @@
 | `test-extension-rpc.py` | 用真实 `pi --mode rpc --no-session` 驱动 extension：空参 `/reminders` 的确定性 list，以及非空文本交回当前 Pi session 的 handoff（转交） |
 | `test-list-query.ts` | 列表阅读结果语义的确定性单测：到期窗口闭区间、无日期项排除/保留、到期日升序排序、limit 截取、工具层非法拒绝；并覆盖工具结果渲染在窄终端下换行不溢出（崩溃回归）。不经 LLM、不写真实提醒事项 |
 | `test-batch-delete.ts` | 批量删除编排的确定性单测（注入 mock）：refs 收集、多目标解析、歧义选择、ID 去重、确认摘要、最终确认只一次、取消零删除、尽力删除失败后继续。不触达 osascript、不写真实提醒事项 |
+| `test-id-match.ts` | 真实 osascript 只读集成测试：验证展示给用户的 short id（UUID 第一段）能正确定位 reminder，用于 update/complete/delete。需要「近期待办」至少 1 条真实未完成 reminder；只读，不创建/修改/删除任何提醒事项 |
 
 ## 运行
 
@@ -21,6 +22,9 @@ node --experimental-strip-types scripts/test-list-query.ts
 
 # 批量删除单测（秒级，纯函数注入，不触达 osascript）
 node --experimental-strip-types scripts/test-batch-delete.ts
+
+# short id 定位的真实 osascript 只读集成测试（秒级，需要至少 1 条真实 reminder）
+node --experimental-strip-types scripts/test-id-match.ts
 ```
 
 脚本会自动：

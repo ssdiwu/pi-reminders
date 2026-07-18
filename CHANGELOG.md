@@ -7,6 +7,7 @@
 ### Fixed
 
 - **窄终端下长提醒事项渲染崩溃**：`reminders` 工具结果在折叠/展开态改为返回真实 `Text` 组件（此前返回绕过宽度约束的原始字符串），超长提醒行（如含完整 URL 的列表项）在窄终端下由 `Text` 自动换行，不再超出终端宽度触发 pi-tui 断言闪退。
+- **short id 无法用于 update/complete/delete**：展示给用户的是 short id（完整 UUID 的第一段，如 `EBFFC5B8`），但定位 reminder 时按完整 id 精确比较，short id 必然匹配不上，回退到按标题搜该 ID 字符串也失败，导致用 short id 操作全部报「未找到」。改为前缀匹配（`starts with`）后，short id 与完整 id 均可正常定位。
 
 ## [0.5.1] - 2026-07-16
 

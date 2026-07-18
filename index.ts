@@ -320,7 +320,7 @@ export function applyListQuery(
   return result;
 }
 
-async function listReminders(query = "", list = DEFAULT_LIST, includeCompleted = false): Promise<Reminder[]> {
+export async function listReminders(query = "", list = DEFAULT_LIST, includeCompleted = false): Promise<Reminder[]> {
   const lines = [
     `use framework "Foundation"`,
     `tell application "Reminders"`,
@@ -369,7 +369,7 @@ async function showReminder(id: string): Promise<Reminder | null> {
     `repeat with lst in lists`,
     `  set lstName to name of lst`,
     `  repeat with r in reminders of lst`,
-    `    if (id of r as string) is targetId then`,
+    `    if (id of r as string) starts with targetId then`, // starts with: 支持用户传入的 short id（展示的是 UUID 第一段，如 03F105F0），它是完整 id 的真前缀
     `      set rName to name of r`,
     `      set rDue to ""`,
     `      try`,
@@ -395,7 +395,7 @@ async function showReminder(id: string): Promise<Reminder | null> {
   return records[0] ? osaRecordToReminder(records[0]) : null;
 }
 
-async function resolveCandidates(ref: string, mode: "all" | "incomplete", list = DEFAULT_LIST): Promise<Reminder[]> {
+export async function resolveCandidates(ref: string, mode: "all" | "incomplete", list = DEFAULT_LIST): Promise<Reminder[]> {
   const byId = await showReminder(ref);
   if (byId) return [byId];
   return listReminders(ref, list, mode === "all");
