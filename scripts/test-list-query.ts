@@ -2,7 +2,8 @@
 // Run: node --experimental-strip-types scripts/test-list-query.ts
 // These cover the pure list-reading behavior (ADR 0002): not the LLM action choice.
 
-import { initTheme, keyHint } from "@earendil-works/pi-coding-agent";
+import { initTheme } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import remindersExtension, { applyListQuery, sortRemindersByDue, normalizeDueBound, coerceListBounds, coerceListLimit } from "../index.ts";
 
 initTheme(undefined, false);
@@ -183,12 +184,48 @@ eq(await execListText({ limit: 0 }), "Error: limit must be a positive integer", 
 eq(await execListText({ limit: 2.5 }), "Error: limit must be a positive integer", "execute: fractional limit rejected");
 eq(await execListText({ limit: -1 }), "Error: limit must be a positive integer", "execute: negative limit rejected");
 
-// --- tool result projection ---
+// --- tool result projection (behaviour: never emit a line wider than the render width) ---
+// renderResult must return a real Component (Text); its render(width) wraps long lines
+// instead of returning one raw unbounded string. Regression: a long reminder line under a
+// narrow terminal used to exceed the terminal width and trip pi-tui's width assertion (crash).
 const projectionTheme = { fg: (_color: string, text: string) => text };
 const projectionResult = { content: [{ type: "text", text: "Created: first\nDetails: second" }], details: { id: "private-id" } };
-eq(captured.tool!.renderResult(projectionResult, { expanded: false, isPartial: false }, projectionTheme).render(80), [`Created: first (${keyHint("app.tools.expand", "to expand")})`], "render: compact summary hides details");
-eq(captured.tool!.renderResult(projectionResult, { expanded: true, isPartial: false }, projectionTheme).render(80), ["Created: first\nDetails: second"], "render: expanded text only");
-eq(captured.tool!.renderResult(projectionResult, { expanded: false, isPartial: true }, projectionTheme).render(80), ["Working…"], "render: partial status");
+
+function renderResultLines(result: { content: { type: string; text: string }[]; details: unknown }, opts: { expanded: boolean; isPartial: boolean }, width: number): string[] {
+  return captured.tool!.renderResult(result, opts, projectionTheme).render(width);
+}
+function maxVisibleWidth(lines: string[]): number {
+  return lines.reduce((max, line) => Math.max(max, visibleWidth(line)), 0);
+}
+
+// compact summary: hides the remaining lines and fits the render width
+{
+  const lines = renderResultLines(projectionResult, { expanded: false, isPartial: false }, 80);
+  eq(maxVisibleWidth(lines) <= 80, true, "render: compact lines never exceed width");
+  eq(lines.join("").includes("Created: first"), true, "render: compact shows first line");
+  eq(lines.join("").includes("Details: second"), false, "render: compact hides remaining lines");
+}
+// expanded: shows the full text and fits the render width
+{
+  const lines = renderResultLines(projectionResult, { expanded: true, isPartial: false }, 80);
+  eq(maxVisibleWidth(lines) <= 80, true, "render: expanded lines never exceed width");
+  eq(lines.join("").includes("Created: first") && lines.join("").includes("Details: second"), true, "render: expanded shows full text");
+}
+// partial status: fits the render width
+{
+  const lines = renderResultLines(projectionResult, { expanded: false, isPartial: true }, 80);
+  eq(maxVisibleWidth(lines) <= 80, true, "render: partial lines never exceed width");
+  eq(lines.join("").includes("Working…"), true, "render: partial status");
+}
+// crash regression: a very long reminder line under a narrow terminal must wrap, not overflow
+{
+  const longResult = { content: [{ type: "text", text: "https://github.com/Jarvis322/MacWake 完成汉化 ".repeat(20) }], details: { count: 1 } };
+  const collapsed = renderResultLines(longResult, { expanded: false, isPartial: false }, 30);
+  const expanded = renderResultLines(longResult, { expanded: true, isPartial: false }, 30);
+  eq(maxVisibleWidth(collapsed) <= 30, true, "render: long collapsed line wraps within narrow terminal (crash regression)");
+  eq(maxVisibleWidth(expanded) <= 30, true, "render: long expanded line wraps within narrow terminal (crash regression)");
+  eq(expanded.length > 1, true, "render: long line actually wraps to multiple lines");
+}
 
 if (failures > 0) {
   console.error(`\n${failures} test(s) failed`);

@@ -1,6 +1,7 @@
 import { StringEnum } from "@earendil-works/pi-ai";
 import { keyHint } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -643,10 +644,9 @@ async function resolveOneForWrite(
 function renderToolResultText(result: { content?: Array<{ type?: string; text?: string }> }, expanded: boolean, theme: Theme) {
   const text = result.content?.filter((item) => item.type === "text" && typeof item.text === "string").map((item) => item.text!).join("\n") ?? "";
   const visible = expanded ? text : `${text.split("\n").find(Boolean) ?? "Completed"} (${keyHint("app.tools.expand", "to expand")})`;
-  return {
-    render: () => [theme.fg(expanded ? "toolOutput" : "success", visible)],
-    invalidate: () => {},
-  };
+  // Return a real Component: Text.render(width) wraps long lines via wrapTextWithAnsi so a
+  // long reminder line never exceeds the terminal width (which would trip pi-tui's assertion).
+  return new Text(theme.fg(expanded ? "toolOutput" : "success", visible), 0, 0);
 }
 
 async function executeToolAction(
@@ -747,7 +747,7 @@ export default function remindersExtension(pi: ExtensionAPI) {
       return executeToolAction(params.action as Action, params, ctx);
     },
     renderResult(result, { expanded, isPartial }, theme) {
-      if (isPartial) return { render: () => [theme.fg("warning", "Working…")], invalidate: () => {} };
+      if (isPartial) return new Text(theme.fg("warning", "Working…"), 0, 0);
       return renderToolResultText(result, expanded, theme);
     },
   });

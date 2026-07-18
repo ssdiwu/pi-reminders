@@ -45,7 +45,7 @@ node --experimental-strip-types scripts/test-list-query.ts
 node --experimental-strip-types scripts/test-batch-delete.ts
 ```
 
-The smoke test auto-selects the empty-command list UI and verifies that nonempty `/reminders` input starts a Pi agent run and delivers its exact text to the current session. `test-list-query.ts` deterministically covers list-reading semantics (due window, sorting, limit, validation) without touching the LLM or real reminders. Natural-language interpretation and action selection remain the current LLM's responsibility; this extension does not bind a model or automate a model behavior matrix.
+The smoke test auto-selects the empty-command list UI and verifies that nonempty `/reminders` input starts a Pi agent run and delivers its exact text to the current session. `test-list-query.ts` deterministically covers list-reading semantics (due window, sorting, limit, validation) and tool-result rendering never overflowing the terminal width, without touching the LLM or real reminders. Natural-language interpretation and action selection remain the current LLM's responsibility; this extension does not bind a model or automate a model behavior matrix.
 
 ## Repository layout
 
